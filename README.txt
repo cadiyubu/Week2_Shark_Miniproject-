@@ -255,7 +255,7 @@ Step  | Column(s)                              | Technique               | Statu
 9. PRESENTATION
 ================================================================================
 
-Google Slides URL : [ADD LINK BEFORE PRESENTATION DAY]
+Google Slides URL : https://docs.google.com/presentation/d/1fUfaoPmaiCLCEeGMWcXY9B58B9Ye8q3P-nq9LP3NzME/edit?usp=sharing
 Expected delivery : [X] minutes + [X] minutes Q&A
 
 Slide structure:
