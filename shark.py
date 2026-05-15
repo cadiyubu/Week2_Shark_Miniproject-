@@ -11,8 +11,8 @@ Business Case:
     maximise student exposure to real shark behaviour.
 
 Hypotheses:
-    H1 — Incidents cluster in specific geographic hotspots (Irene — pending)
-    H2 — Incidents peak in summer months, hemisphere-adjusted (Diana — ✅ confirmed)
+    H1 — Incidents cluster in specific geographic hotspots ( ✅ confirmed)
+    H2 — Incidents peak in summer months, hemisphere-adjusted ( ✅ confirmed)
 
 Usage:
     from shark import clean_shark_df, scope_modern_era
@@ -29,10 +29,7 @@ Pipeline (clean_shark_df):
     Ch.7  clean_species                 (keyword map → 15 named species)
     Ch.8  standardize_type              (5 official GSAF categories)
     Ch.9  clean_dates                   (4-pass pipeline → year, month, season)
-    Ch.10 finalize_columns              (drop raw date cols, lowercase all names)
-    Ch.11 deduplicate_and_validate      (dedup, drop personal cols, date validation,
-                                         artifact fix, null year cleanup)
-    Ch.12 scope_modern_era              (filter to 2000 onwards — called separately)
+
 
 PEP8 compliant. All functions are independently callable and importable.
 """
@@ -40,16 +37,6 @@ PEP8 compliant. All functions are independently callable and importable.
 import logging
 import pandas as pd
 from dateutil import parser as dateutil_parser
-
-# ---------------------------------------------------------------------------
-# LOGGING SETUP
-# ---------------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
-log = logging.getLogger(__name__)
-
 
 # ===========================================================================
 # CHAPTER 1 — DATA LOADING
@@ -552,207 +539,12 @@ def ext_year_month(date_val, fallback_year) -> tuple:
     return fallback_year, None
 
 
-def clean_dates(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Multi-pass date cleaning pipeline (Diana).
-    Technique: regex noise removal + fuzzy parsing + epoch artifact handling.
-
-    Pass 1: month_year_f  — normalize to 'Mon YYYY' format
-    Pass 2a: smart_cleaner — fuzzy parse remaining strings (dateutil)
-    Pass 2b: word_cleaner  — strip noise words from still-failing rows
-    Pass 3: recog_daytimef — convert parseable strings to datetime objects
-    Pass 4: ext_year_month — extract year_ext, month_ext; handle epoch artifacts
-    Pass 5: Derive Season from month_ext for H2 analysis
-
-    Args:
-        df: Input DataFrame (must contain 'Date' and 'Year' columns).
-
-    Returns:
-        DataFrame with year_ext, month_ext, Season columns added.
-    """
-    if 'Date' not in df.columns:
-        log.warning("'Date' not found — skipping date cleaning.")
-        return df
-
-    df = month_year_f(df, 'Date')
-    df = smart_cleaner(df, 'Date')
-    df = word_cleaner(df, 'Date', _WORDS_REMOVE)
-    df = recog_daytimef(df, 'Date')
-
-    df[['year_ext', 'month_ext']] = df.apply(
-        lambda row: pd.Series(ext_year_month(row['Date'], row.get('Year'))),
-        axis=1
-    )
-    df['Season'] = df['month_ext'].map(_SEASON_MAP)
-
-    artifact_count = (df['year_ext'] == 0).sum()
-    log.info(
-        "Date cleaning done. year_ext/month_ext/Season added. "
-        "Rows with year_ext == 0: %d", artifact_count
-    )
-    return df
-
-
-# ===========================================================================
-# CHAPTER 10 — COLUMN FINALIZATION
-# ===========================================================================
-
-def finalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Drop raw date/time columns superseded by year_ext/month_ext/Season.
-    Rename year_ext → year, month_ext → month.
-    Lowercase all column names for consistent downstream access.
-    Technique: column cleanup + renaming.
-
-    Dropped: Date, Year, Time, fdate_check
-
-    Args:
-        df: Input DataFrame (after clean_dates).
-
-    Returns:
-        DataFrame with finalized column names.
-    """
-    cols_drop = ['Date', 'Year', 'Time', 'fdate_check']
-    df = df.drop(columns=cols_drop, errors='ignore')
-    df = df.rename(columns={'year_ext': 'year', 'month_ext': 'month'})
-    df.columns = df.columns.map(str.lower)
-    log.info("Columns finalized: %s", list(df.columns))
-    return df
-
-
-# ===========================================================================
-# CHAPTER 11 — DEDUPLICATION & VALIDATION
-# ===========================================================================
-
-def deduplicate_and_validate(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Five-step final validation and cleanup pass.
-    Technique: deduplication + date validation + artifact correction.
-
-    Step 1: Remove fully duplicate rows
-    Step 2: Drop personal columns (name, age, sex) — safe after dedup
-    Step 3: Drop rows with no valid year AND no valid month
-    Step 4: Fix year artifact 9955 → 1995 (epoch parsing error)
-    Step 5: Drop the 2 remaining rows where year is null or 0
-
-    Args:
-        df: Input DataFrame (after finalize_columns — columns are lowercase).
-
-    Returns:
-        Validated DataFrame ready for scoping.
-    """
-    # Step 1
-    n = df.duplicated().sum()
-    if n > 0:
-        df = df.drop_duplicates()
-        log.info("Step 1: Removed %d duplicate rows.", n)
+def fill_by_country(row):
+    if pd.isnull(row['month_ext']):
+        # Look up the mode for this specific row's country in our map
+        return country_mode_map.get(row['Country'])
     else:
-        log.info("Step 1: No duplicates found.")
-
-    # Step 2
-    personal = ['name', 'age', 'sex']
-    df = df.drop(columns=[c for c in personal if c in df.columns], errors='ignore')
-    log.info("Step 2: Personal columns dropped.")
-
-    # Step 3
-    no_date_mask = (
-        (df['year'].isnull() | (df['year'] == 0)) &
-        (df['month'].isnull() | (df['month'] == 0))
-    )
-    n_no_date = no_date_mask.sum()
-    df = df.drop(index=df[no_date_mask].index)
-    log.info("Step 3: Dropped %d rows with no valid year AND no valid month.", n_no_date)
-
-    # Step 4
-    bad_years = df[df['year'] > 2026]
-    if len(bad_years) > 0:
-        df['year'] = df['year'].replace(9955, 1995)
-        log.info("Step 4: Corrected year artifact 9955 → 1995.")
-
-    # Step 5
-    null_year = df[df['year'].isnull() | (df['year'] == 0)]
-    if len(null_year) > 0:
-        df = df.drop(index=null_year.index).reset_index(drop=True)
-        log.info("Step 5: Dropped %d rows with unresolvable year.", len(null_year))
-
-    log.info("Validation complete. Shape: %d rows × %d columns", df.shape[0], df.shape[1])
-    return df
+        # If it's not null, keep the original value
+        return row['month_ext']
 
 
-# ===========================================================================
-# CHAPTER 12 — SCOPE TO MODERN ERA
-# ===========================================================================
-
-def scope_modern_era(df: pd.DataFrame, year_from: int = 2000) -> pd.DataFrame:
-    """
-    Filter the cleaned dataset to year_from onwards (default: 2000).
-
-    Rationale: Data quality and reporting consistency improve significantly
-    from 2000 onwards. Earlier records have systematically higher rates of
-    missing dates and incomplete location data. For fieldwork planning,
-    recent decades are both more reliable and more relevant.
-
-    Args:
-        df: Cleaned DataFrame (output of clean_shark_df).
-        year_from: Start year for the modern era filter (inclusive).
-
-    Returns:
-        Filtered DataFrame scoped to year_from–present.
-    """
-    df_modern = df[df['year'] >= year_from].copy().reset_index(drop=True)
-    log.info(
-        "Scoped to %d onwards: %d rows (from %d total).",
-        year_from, len(df_modern), len(df)
-    )
-    return df_modern
-
-
-# ===========================================================================
-# ORCHESTRATOR
-# ===========================================================================
-
-def clean_shark_df(filepath: str) -> pd.DataFrame:
-    """
-    Full cleaning pipeline for the GSAF shark attack dataset.
-
-    Returns shark_clean (all years after cleaning).
-    Call scope_modern_era(shark_clean) separately to get shark_newera (2000+).
-
-    Orchestration order:
-        1.  load_data
-        2.  drop_irrelevant_columns
-        3.  check_and_drop_id_columns
-        4.  standardize_col_names
-        5.  clean_string_columns
-        6.  clean_activity
-        7.  clean_species
-        8.  standardize_type
-        9.  clean_dates                 → adds year_ext, month_ext, Season
-        10. finalize_columns            → lowercase, drop raw date cols
-        11. deduplicate_and_validate    → dedup, personal cols, artifacts
-
-    Args:
-        filepath: Path to GSAF5.xls.
-
-    Returns:
-        Fully cleaned DataFrame ready for scope_modern_era() and analysis.
-    """
-    log.info("=== Shark Cleaning Pipeline START ===")
-
-    df = load_data(filepath)
-    df = drop_irrelevant_columns(df)
-    df = check_and_drop_id_columns(df)
-    df = standardize_col_names(df)
-    df = clean_string_columns(df)
-    df = clean_activity(df)
-    df = clean_species(df)
-    df = standardize_type(df)
-    df = clean_dates(df)
-    df = finalize_columns(df)
-    df = deduplicate_and_validate(df)
-
-    log.info(
-        "=== Pipeline COMPLETE — %d rows × %d columns ===",
-        df.shape[0], df.shape[1]
-    )
-    return df

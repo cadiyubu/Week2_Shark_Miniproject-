@@ -236,8 +236,8 @@ Ch.12 scope_modern_era  [Diana]
 10. PRESENTATION
 ================================================================================
 
-  Google Slides URL : [ADD BEFORE PRESENTATION DAY]
-  Expected delivery : [X] min + [X] min Q&A
+  Google Slides URL : [https://docs.google.com/presentation/d/1QtL4MvRi6QmxbolRUTPduIxlkL1DDWuBDpbejwQGWbg/edit?slide=id.p9#slide=id.p9]
+  
 
   Slide structure:
     01 — Title: "Where the Ocean Bites Back"
