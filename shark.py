@@ -2,39 +2,44 @@
 shark.py — Shark Attack Dataset Cleaning Module
 ================================================
 Ironhack Data Analytics Bootcamp | Week 2 Project
-Authors: Diana Carolina Yule Burbano & Irene Fafian
+Team: Diana Carolina Yule Burbano & Irene Fafian
 
 Business Case:
-    Marine biology research institution optimising fieldwork locations and timing
-    based on historical shark incident data.
+    A marine biology research institution needs to optimise when and where to
+    deploy fieldwork teams. Using 26 years of global incident data (2000–2026),
+    this analysis identifies the geographic locations and seasonal windows that
+    maximise student exposure to real shark behaviour.
 
 Hypotheses:
-    H1 — Incidents cluster in specific coastal regions (geographic hotspots).
-    H2 — Incidents peak during specific seasons (seasonal/behavioural patterns).
-    H3 — Species variety vs. dominant-species quantity as incident predictor.
+    H1 — Incidents cluster in specific geographic hotspots (Irene — pending)
+    H2 — Incidents peak in summer months, hemisphere-adjusted (Diana — ✅ confirmed)
 
 Usage:
-    from shark import clean_shark_df
-    clean_df = clean_shark_df("GSAF5.xls")
+    from shark import clean_shark_df, scope_modern_era
+    shark_clean   = clean_shark_df("GSAF5.xls")
+    shark_newera  = scope_modern_era(shark_clean)
 
-Structure (by chapter):
-    Ch.1  load_data                  — read raw XLS
-    Ch.2  drop_irrelevant_columns    — remove non-hypothesis columns
-    Ch.3  check_and_drop_id_columns  — evaluate Case Number, then drop
-    Ch.4  standardize_col_names      — strip + capitalize + rename Fatal y/n
-    Ch.5  clean_string_columns       — Country, State, Location, Fatality
-    Ch.6  clean_activity             — keyword-based activity unification
-    Ch.7  clean_species              — keyword-based species unification
-    Ch.8  standardize_type           — 5 official GSAF categories
-    Ch.9  clean_dates                — multi-pass date parsing (Diana)
-    Ch.10 check_duplicates           — deduplication
-    Ch.11 clean_shark_df             — orchestrator (calls all steps)
+Pipeline (clean_shark_df):
+    Ch.1  load_data
+    Ch.2  drop_irrelevant_columns
+    Ch.3  check_and_drop_id_columns
+    Ch.4  standardize_col_names
+    Ch.5  clean_string_columns          (Country, State, Location, Fatality)
+    Ch.6  clean_activity                (keyword map → 10 categories)
+    Ch.7  clean_species                 (keyword map → 15 named species)
+    Ch.8  standardize_type              (5 official GSAF categories)
+    Ch.9  clean_dates                   (4-pass pipeline → year, month, season)
+    Ch.10 finalize_columns              (drop raw date cols, lowercase all names)
+    Ch.11 deduplicate_and_validate      (dedup, drop personal cols, date validation,
+                                         artifact fix, null year cleanup)
+    Ch.12 scope_modern_era              (filter to 2000 onwards — called separately)
 
-PEP8 compliant. All functions independently callable and importable.
+PEP8 compliant. All functions are independently callable and importable.
 """
 
 import logging
 import pandas as pd
+from dateutil import parser as dateutil_parser
 
 # ---------------------------------------------------------------------------
 # LOGGING SETUP
@@ -77,9 +82,8 @@ def load_data(filepath: str) -> pd.DataFrame:
 # ===========================================================================
 
 COLS_TO_DROP = [
-    'Age', 'Name', 'Sex', 'Source', 'Injury', 'pdf',
-    'href formula', 'href', 'original order',
-    'Unnamed: 21', 'Unnamed: 22'
+    'Source', 'Injury', 'pdf', 'href formula', 'href',
+    'original order', 'Unnamed: 21', 'Unnamed: 22'
 ]
 
 
@@ -88,9 +92,10 @@ def drop_irrelevant_columns(df: pd.DataFrame) -> pd.DataFrame:
     Drop columns with no analytical value for the business case.
     Technique: column dropping.
 
-    Dropped: Age, Name, Sex, Source, Injury, pdf, href formula, href,
+    Dropped: Source, Injury, pdf, href formula, href,
              original order, Unnamed: 21, Unnamed: 22
-    Rationale: confirmed in D1-PLAN.docx (YES/NO/MAYBE column list).
+
+    Note: Age, Name, Sex are retained until after deduplication (Ch.11).
 
     Args:
         df: Input DataFrame.
@@ -110,11 +115,11 @@ def drop_irrelevant_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def check_and_drop_id_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Evaluate Case Number columns for use as a primary key, then drop.
-    Technique: deduplication check / column dropping.
+    Evaluate Case Number columns for uniqueness, then drop both.
+    Technique: uniqueness check + column dropping.
 
     Neither 'Case Number' nor 'Case Number.1' is unique — both contain
-    duplicates, so neither qualifies as a reliable index.
+    duplicates, so neither qualifies as a reliable primary key.
 
     Args:
         df: Input DataFrame.
@@ -124,8 +129,8 @@ def check_and_drop_id_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
     for col in ['Case Number', 'Case Number.1']:
         if col in df.columns:
-            dupes = df.duplicated(subset=[col]).sum()
-            log.info("'%s' duplicates: %d — dropping.", col, dupes)
+            n = df.duplicated(subset=[col]).sum()
+            log.info("'%s' has %d duplicate values — dropping.", col, n)
     df = df.drop(columns=['Case Number', 'Case Number.1'], errors='ignore')
     return df
 
@@ -136,9 +141,11 @@ def check_and_drop_id_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def standardize_col_names(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Strip whitespace, capitalize first letter of each column name.
+    Strip whitespace and capitalize the first letter of each column name.
     Rename 'Fatal y/n' → 'Fatality'.
     Technique: column renaming.
+
+    Note: Full lowercase is applied later in Ch.10 after date extraction.
 
     Args:
         df: Input DataFrame.
@@ -148,7 +155,7 @@ def standardize_col_names(df: pd.DataFrame) -> pd.DataFrame:
     """
     df.columns = df.columns.map(lambda c: c.strip().capitalize())
     df.rename(columns={'Fatal y/n': 'Fatality'}, inplace=True)
-    log.info("Column names standardized: %s", list(df.columns))
+    log.info("Column names standardized.")
     return df
 
 
@@ -157,11 +164,8 @@ def standardize_col_names(df: pd.DataFrame) -> pd.DataFrame:
 # ===========================================================================
 
 def clean_string(value) -> str:
-    """
-    Strip whitespace and convert to uppercase.
-    Returns None for null values.
-    """
-    return value if pd.isnull(value) else str(value).strip().upper()
+    """Strip whitespace and convert to uppercase. Returns None for nulls."""
+    return None if pd.isnull(value) else str(value).strip().upper()
 
 
 def find_weird_strings(df: pd.DataFrame, column: str) -> pd.Series:
@@ -178,12 +182,11 @@ def find_weird_strings(df: pd.DataFrame, column: str) -> pd.Series:
     """
     condition = df[column].apply(
         lambda x: False if pd.isnull(x)
-        else any(not (char.isupper() or char.isspace()) for char in str(x))
+        else any(not (ch.isupper() or ch.isspace()) for ch in str(x))
     )
     return df[condition][column].value_counts()
 
 
-# Manual mapping for ambiguous / multi-name country entries
 _COUNTRY_MAP = {
     'ST KITTS ? NEVIS': 'SAINT KITTS AND NEVIS',
     'ST. MARTIN': 'SAINT MARTIN',
@@ -214,9 +217,9 @@ def _normalize_country(x: str) -> str:
 
 def clean_string_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Apply strip + uppercase to Country, State, Location, Fatality.
-    Apply country-specific mapping and normalization to Country.
-    Technique: string cleaning + manual mapping.
+    Strip + uppercase for Country, State, Location, Fatality.
+    Apply country-specific normalization and manual mapping to Country.
+    Technique: string cleaning + manual category mapping.
 
     Args:
         df: Input DataFrame.
@@ -277,11 +280,14 @@ def _unify_activity(x: str) -> str:
 
 def clean_activity(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Unify Activity column into standard categories via keyword matching.
-    Technique: keyword-based category mapping (regex-free, interpretable).
+    Unify Activity column into 10 standard categories via keyword matching.
+    Technique: keyword-based category mapping.
 
     Categories: FISHING, SWIMMING, SURFING, DIVING, BOATING, KAYAKING,
                 STATIONARY, MARITIME ACCIDENT, OTHER, UNKNOWN
+
+    Note: The next() iterator returns the first matching keyword. Key order
+    in _ACTIVITY_MAP is intentional — more specific terms precede general ones.
 
     Args:
         df: Input DataFrame.
@@ -290,12 +296,11 @@ def clean_activity(df: pd.DataFrame) -> pd.DataFrame:
         DataFrame with Activity standardized.
     """
     if 'Activity' not in df.columns:
-        log.warning("Column 'Activity' not found — skipping.")
+        log.warning("'Activity' not found — skipping.")
         return df
-
     df['Activity'] = df['Activity'].apply(clean_string)
     df['Activity'] = df['Activity'].apply(_unify_activity)
-    log.info("Activity unified: %d categories.", df['Activity'].nunique())
+    log.info("Activity: %d categories.", df['Activity'].nunique())
     return df
 
 
@@ -338,13 +343,12 @@ def _unify_species(x: str) -> str:
 
 def clean_species(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Unify Species column into named shark categories.
+    Unify Species column into 15 named species + OTHER + UNKNOWN.
     Technique: keyword-based species mapping.
 
-    Named species: WHITE SHARK, TIGER SHARK, BULL SHARK, HAMMERHEAD SHARK,
-                   BLACKTIP SHARK, MAKO SHARK, REEF SHARK, SAND SHARK,
-                   BLUE SHARK, NURSE SHARK, WOBBEGONG SHARK, LEMON SHARK,
-                   THRESHER SHARK, OTHER, UNKNOWN
+    Note: A significant share of records will remain UNKNOWN — this reflects
+    the difficulty of species identification in incident field conditions,
+    not a cleaning failure.
 
     Args:
         df: Input DataFrame.
@@ -353,12 +357,11 @@ def clean_species(df: pd.DataFrame) -> pd.DataFrame:
         DataFrame with Species standardized.
     """
     if 'Species' not in df.columns:
-        log.warning("Column 'Species' not found — skipping.")
+        log.warning("'Species' not found — skipping.")
         return df
-
     df['Species'] = df['Species'].apply(clean_string)
     df['Species'] = df['Species'].apply(_unify_species)
-    log.info("Species unified: %d categories.", df['Species'].nunique())
+    log.info("Species: %d categories.", df['Species'].nunique())
     return df
 
 
@@ -392,9 +395,8 @@ def standardize_type(df: pd.DataFrame) -> pd.DataFrame:
         DataFrame with Type standardized.
     """
     if 'Type' not in df.columns:
-        log.warning("Column 'Type' not found — skipping.")
+        log.warning("'Type' not found — skipping.")
         return df
-
     df['Type'] = df['Type'].replace(_TYPE_MAP)
     log.info("Type standardized: %s", df['Type'].value_counts(dropna=False).to_dict())
     return df
@@ -405,9 +407,9 @@ def standardize_type(df: pd.DataFrame) -> pd.DataFrame:
 # ===========================================================================
 
 _MONTHS = [
-    "january", "february", "march", "april", "may", "june",
-    "july", "august", "september", "october", "november", "december",
-    "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
+    'january', 'february', 'march', 'april', 'may', 'june',
+    'july', 'august', 'september', 'october', 'november', 'december',
+    'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'
 ]
 
 _WORDS_REMOVE = [
@@ -434,16 +436,15 @@ _SEASON_MAP = {
 
 def month_year(val: str) -> str:
     """
-    Normalise messy date string toward 'Mon YYYY' or parseable format.
-    Handles ordinal suffixes, 'MonthName DD', 'DD-Mon-YYYY', dual-year ranges.
+    Normalize a raw Date string toward a parseable format.
+    Handles: ordinal suffixes, 'MonthName DD', 'DD-Mon-YYYY',
+    'YYYY-Mon-DD', and dual-year ranges (returns midpoint).
     """
     if not isinstance(val, str):
         return val
-
-    for s in ["st", "nd", "rd", "th"]:
-        val = val.replace(s, "")
+    for s in ['st', 'nd', 'rd', 'th']:
+        val = val.replace(s, '')
     val = val.strip()
-
     parts = val.lower().split()
     if len(parts) == 2:
         if parts[1].isdigit() and len(parts[1]) <= 2 and parts[0] in _MONTHS:
@@ -453,86 +454,115 @@ def month_year(val: str) -> str:
         if (parts[0].isdigit() and parts[1].isdigit()
                 and len(parts[0]) == 4 and len(parts[1]) == 4):
             return str(round((int(parts[0]) + int(parts[1])) / 2))
-
-    parts_dash = val.lower().replace('-', ' ').split()
-    if len(parts_dash) == 3:
-        if parts_dash[1] in _MONTHS and parts_dash[2].isdigit() and len(parts_dash[2]) == 4:
-            return f"{parts_dash[1]} {parts_dash[2]}"
-        if parts_dash[0].isdigit() and len(parts_dash[0]) == 4 and parts_dash[1] in _MONTHS:
-            return f"{parts_dash[1]} {parts_dash[0]}"
-
+    parts_d = val.lower().replace('-', ' ').split()
+    if len(parts_d) == 3:
+        if parts_d[1] in _MONTHS and parts_d[2].isdigit() and len(parts_d[2]) == 4:
+            return f"{parts_d[1]} {parts_d[2]}"
+        if parts_d[0].isdigit() and len(parts_d[0]) == 4 and parts_d[1] in _MONTHS:
+            return f"{parts_d[1]} {parts_d[0]}"
     return val
 
 
 def month_year_f(df: pd.DataFrame, col_date: str) -> pd.DataFrame:
-    """Apply month_year normalisation to a date column."""
+    """Apply month_year() to every value in col_date. Returns a copy."""
     df = df.copy()
     df[col_date] = df[col_date].apply(month_year)
     return df
 
 
-def word_cleaner(df: pd.DataFrame, col_date: str, words_remove: list) -> pd.DataFrame:
+def flex_dateparse(text: str):
     """
-    Remove known noise words from unparseable date strings.
-    Only applied to rows where pd.to_datetime already failed.
+    Attempt fuzzy date parsing using dateutil.
+    fuzzy=True ignores words like 'Reported', 'Ca.', 'Late'.
+    Returns None on failure.
+    """
+    try:
+        return dateutil_parser.parse(str(text), fuzzy=True)
+    except Exception:
+        return None
+
+
+def smart_cleaner(df: pd.DataFrame, col_date: str) -> pd.DataFrame:
+    """
+    Apply flex_dateparse only to rows that pd.to_datetime cannot parse.
+    Technique: fuzzy date parsing (dateutil).
     """
     df = df.copy()
-    df['_fdate_check'] = pd.to_datetime(df[col_date], errors='coerce', dayfirst=True)
+    df['fdate_check'] = pd.to_datetime(df[col_date], errors='coerce', dayfirst=True)
+    mask = df['fdate_check'].isnull()
+    df.loc[mask, col_date] = df.loc[mask, col_date].apply(flex_dateparse)
+    df = df.drop('fdate_check', axis=1)
+    return df
+
+
+def word_cleaner(df: pd.DataFrame, col_date: str, words_remove: list) -> pd.DataFrame:
+    """
+    Strip noise words from date strings that pd.to_datetime still cannot parse.
+    Applied selectively — only to rows where parsing already failed.
+
+    Args:
+        df: Input DataFrame.
+        col_date: Date column name.
+        words_remove: List of noise word strings to remove.
+    """
+    df = df.copy()
+    df['fdate_check'] = pd.to_datetime(df[col_date], errors='coerce', dayfirst=True)
     pattern = '|'.join(words_remove)
-    mask = df['_fdate_check'].isnull()
+    mask = df['fdate_check'].isnull()
     df.loc[mask, col_date] = (
-        df.loc[mask, col_date].str.replace(pattern, '', regex=True).str.strip()
+        df.loc[mask, col_date]
+        .astype(str)
+        .str.replace(pattern, '', regex=True)
+        .str.strip()
     )
-    df = df.drop(columns=['_fdate_check'])
+    df = df.drop('fdate_check', axis=1)
     return df
 
 
 def recog_daytimef(df: pd.DataFrame, col_date: str) -> pd.DataFrame:
     """
     Convert parseable date strings to datetime objects.
-    Rows that fail parsing retain their string value (NaT in fdate_check).
+    Rows that still fail remain as strings (errors='coerce' writes NaT).
     """
     df = df.copy()
     df['fdate_check'] = pd.to_datetime(df[col_date], errors='coerce', dayfirst=True)
     mask = df['fdate_check'].notna()
-    df.loc[mask, col_date] = df.loc[mask, 'fdate_check']
+    df.loc[mask, 'Date'] = df.loc[mask, 'fdate_check']
     return df
 
 
 def ext_year_month(date_val, fallback_year) -> tuple:
     """
     Extract (year, month) from a cleaned date value.
-    Handles datetime objects, parseable strings, and epoch artifacts.
+    Handles: datetime objects, parseable strings, month-name-only strings,
+    and epoch artifacts (1970-01-01 with microsecond-encoded year).
     Returns (fallback_year, None) for unresolvable entries.
     """
     date_str = str(date_val).strip().lower()
-
     parsed = pd.to_datetime(date_str, errors='coerce')
     if parsed is not pd.NaT and parsed.year != 1970:
         return parsed.year, parsed.month
-
     for name, num in _MONTH_MAP.items():
         if name in date_str:
             return fallback_year, num
-
     if '1970' in date_str and '.' in date_str:
         micro_str = date_str.split('.')[-1]
-        year_str = micro_str[-4:]
-        return (int(year_str) if year_str.isdigit() else fallback_year), None
-
+        year = micro_str[-4:]
+        return (int(year) if year.isdigit() else fallback_year), None
     return fallback_year, None
 
 
 def clean_dates(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Multi-pass date cleaning pipeline (Diana's approach).
-    Technique: regex noise removal + fuzzy date parsing + epoch artifact handling.
+    Multi-pass date cleaning pipeline (Diana).
+    Technique: regex noise removal + fuzzy parsing + epoch artifact handling.
 
-    Pass 1: Normalise to 'Mon YYYY' format (month_year)
-    Pass 2: Strip noise words (Before, Circa, Reported, etc.)
-    Pass 3: Convert parseable strings to datetime objects (recog_daytimef)
-    Pass 4: Extract year_ext (int) and month_ext (int) from cleaned Date
-    Pass 5: Derive Season (Winter/Spring/Summer/Autumn) for H2
+    Pass 1: month_year_f  — normalize to 'Mon YYYY' format
+    Pass 2a: smart_cleaner — fuzzy parse remaining strings (dateutil)
+    Pass 2b: word_cleaner  — strip noise words from still-failing rows
+    Pass 3: recog_daytimef — convert parseable strings to datetime objects
+    Pass 4: ext_year_month — extract year_ext, month_ext; handle epoch artifacts
+    Pass 5: Derive Season from month_ext for H2 analysis
 
     Args:
         df: Input DataFrame (must contain 'Date' and 'Year' columns).
@@ -541,81 +571,171 @@ def clean_dates(df: pd.DataFrame) -> pd.DataFrame:
         DataFrame with year_ext, month_ext, Season columns added.
     """
     if 'Date' not in df.columns:
-        log.warning("Column 'Date' not found — skipping date cleaning.")
+        log.warning("'Date' not found — skipping date cleaning.")
         return df
 
     df = month_year_f(df, 'Date')
+    df = smart_cleaner(df, 'Date')
     df = word_cleaner(df, 'Date', _WORDS_REMOVE)
     df = recog_daytimef(df, 'Date')
 
     df[['year_ext', 'month_ext']] = df.apply(
-        lambda row: pd.Series(ext_year_month(row['Date'], row.get('Year', None))),
+        lambda row: pd.Series(ext_year_month(row['Date'], row.get('Year'))),
         axis=1
     )
     df['Season'] = df['month_ext'].map(_SEASON_MAP)
 
-    unresolved = (df['year_ext'] == 0).sum()
+    artifact_count = (df['year_ext'] == 0).sum()
     log.info(
         "Date cleaning done. year_ext/month_ext/Season added. "
-        "Unresolved year_ext==0: %d rows.", unresolved
+        "Rows with year_ext == 0: %d", artifact_count
     )
     return df
 
 
 # ===========================================================================
-# CHAPTER 10 — DEDUPLICATION
+# CHAPTER 10 — COLUMN FINALIZATION
 # ===========================================================================
 
-def check_duplicates(df: pd.DataFrame) -> pd.DataFrame:
+def finalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Check for and remove fully duplicate rows.
-    Technique: deduplication.
+    Drop raw date/time columns superseded by year_ext/month_ext/Season.
+    Rename year_ext → year, month_ext → month.
+    Lowercase all column names for consistent downstream access.
+    Technique: column cleanup + renaming.
+
+    Dropped: Date, Year, Time, fdate_check
 
     Args:
-        df: Input DataFrame.
+        df: Input DataFrame (after clean_dates).
 
     Returns:
-        DataFrame with duplicate rows removed (if any found).
+        DataFrame with finalized column names.
     """
-    n_dupes = df.duplicated().sum()
-    if n_dupes > 0:
-        df = df.drop_duplicates()
-        log.info("Removed %d fully duplicate rows.", n_dupes)
-    else:
-        log.info("No fully duplicate rows found.")
+    cols_drop = ['Date', 'Year', 'Time', 'fdate_check']
+    df = df.drop(columns=cols_drop, errors='ignore')
+    df = df.rename(columns={'year_ext': 'year', 'month_ext': 'month'})
+    df.columns = df.columns.map(str.lower)
+    log.info("Columns finalized: %s", list(df.columns))
     return df
 
 
 # ===========================================================================
-# CHAPTER 11 — ORCHESTRATOR
+# CHAPTER 11 — DEDUPLICATION & VALIDATION
+# ===========================================================================
+
+def deduplicate_and_validate(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Five-step final validation and cleanup pass.
+    Technique: deduplication + date validation + artifact correction.
+
+    Step 1: Remove fully duplicate rows
+    Step 2: Drop personal columns (name, age, sex) — safe after dedup
+    Step 3: Drop rows with no valid year AND no valid month
+    Step 4: Fix year artifact 9955 → 1995 (epoch parsing error)
+    Step 5: Drop the 2 remaining rows where year is null or 0
+
+    Args:
+        df: Input DataFrame (after finalize_columns — columns are lowercase).
+
+    Returns:
+        Validated DataFrame ready for scoping.
+    """
+    # Step 1
+    n = df.duplicated().sum()
+    if n > 0:
+        df = df.drop_duplicates()
+        log.info("Step 1: Removed %d duplicate rows.", n)
+    else:
+        log.info("Step 1: No duplicates found.")
+
+    # Step 2
+    personal = ['name', 'age', 'sex']
+    df = df.drop(columns=[c for c in personal if c in df.columns], errors='ignore')
+    log.info("Step 2: Personal columns dropped.")
+
+    # Step 3
+    no_date_mask = (
+        (df['year'].isnull() | (df['year'] == 0)) &
+        (df['month'].isnull() | (df['month'] == 0))
+    )
+    n_no_date = no_date_mask.sum()
+    df = df.drop(index=df[no_date_mask].index)
+    log.info("Step 3: Dropped %d rows with no valid year AND no valid month.", n_no_date)
+
+    # Step 4
+    bad_years = df[df['year'] > 2026]
+    if len(bad_years) > 0:
+        df['year'] = df['year'].replace(9955, 1995)
+        log.info("Step 4: Corrected year artifact 9955 → 1995.")
+
+    # Step 5
+    null_year = df[df['year'].isnull() | (df['year'] == 0)]
+    if len(null_year) > 0:
+        df = df.drop(index=null_year.index).reset_index(drop=True)
+        log.info("Step 5: Dropped %d rows with unresolvable year.", len(null_year))
+
+    log.info("Validation complete. Shape: %d rows × %d columns", df.shape[0], df.shape[1])
+    return df
+
+
+# ===========================================================================
+# CHAPTER 12 — SCOPE TO MODERN ERA
+# ===========================================================================
+
+def scope_modern_era(df: pd.DataFrame, year_from: int = 2000) -> pd.DataFrame:
+    """
+    Filter the cleaned dataset to year_from onwards (default: 2000).
+
+    Rationale: Data quality and reporting consistency improve significantly
+    from 2000 onwards. Earlier records have systematically higher rates of
+    missing dates and incomplete location data. For fieldwork planning,
+    recent decades are both more reliable and more relevant.
+
+    Args:
+        df: Cleaned DataFrame (output of clean_shark_df).
+        year_from: Start year for the modern era filter (inclusive).
+
+    Returns:
+        Filtered DataFrame scoped to year_from–present.
+    """
+    df_modern = df[df['year'] >= year_from].copy().reset_index(drop=True)
+    log.info(
+        "Scoped to %d onwards: %d rows (from %d total).",
+        year_from, len(df_modern), len(df)
+    )
+    return df_modern
+
+
+# ===========================================================================
+# ORCHESTRATOR
 # ===========================================================================
 
 def clean_shark_df(filepath: str) -> pd.DataFrame:
     """
     Full cleaning pipeline for the GSAF shark attack dataset.
 
-    Orchestration order (update this docstring when adding steps):
-        1.  load_data                  — read raw XLS
-        2.  drop_irrelevant_columns    — remove non-hypothesis columns
-        3.  check_and_drop_id_columns  — evaluate + drop Case Number cols
-        4.  standardize_col_names      — strip/capitalize + rename Fatal y/n
-        5.  clean_string_columns       — Country, State, Location, Fatality
-        6.  clean_activity             — keyword-based Activity unification
-        7.  clean_species              — keyword-based Species unification
-        8.  standardize_type           — 5 official GSAF Type categories
-        9.  clean_dates                — multi-pass Date → year_ext/month_ext/Season
-        10. check_duplicates           — deduplication
+    Returns shark_clean (all years after cleaning).
+    Call scope_modern_era(shark_clean) separately to get shark_newera (2000+).
 
-    Placeholders (to be added in future sprints):
-        - Year column dtype fix (float → Int64)
-        - Year range validation (filter/flag pre-1900 records)
-        - Additional feature engineering before EDA
+    Orchestration order:
+        1.  load_data
+        2.  drop_irrelevant_columns
+        3.  check_and_drop_id_columns
+        4.  standardize_col_names
+        5.  clean_string_columns
+        6.  clean_activity
+        7.  clean_species
+        8.  standardize_type
+        9.  clean_dates                 → adds year_ext, month_ext, Season
+        10. finalize_columns            → lowercase, drop raw date cols
+        11. deduplicate_and_validate    → dedup, personal cols, artifacts
 
     Args:
         filepath: Path to GSAF5.xls.
 
     Returns:
-        Fully cleaned DataFrame ready for EDA and hypothesis testing.
+        Fully cleaned DataFrame ready for scope_modern_era() and analysis.
     """
     log.info("=== Shark Cleaning Pipeline START ===")
 
@@ -628,10 +748,11 @@ def clean_shark_df(filepath: str) -> pd.DataFrame:
     df = clean_species(df)
     df = standardize_type(df)
     df = clean_dates(df)
-    df = check_duplicates(df)
+    df = finalize_columns(df)
+    df = deduplicate_and_validate(df)
 
     log.info(
-        "=== Shark Cleaning Pipeline COMPLETE — %d rows × %d columns ===",
+        "=== Pipeline COMPLETE — %d rows × %d columns ===",
         df.shape[0], df.shape[1]
     )
     return df

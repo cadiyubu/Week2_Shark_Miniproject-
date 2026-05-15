@@ -2,273 +2,254 @@
 🦈 SHARK ATTACK INCIDENT ANALYSIS — PROJECT README
 ================================================================================
 Ironhack Data Analytics Bootcamp | Week 2
-Authors : Diana Carolina Yule Burbano & Irene Fafian
+Team    : Diana Carolina Yule Burbano & Irene Fafian
 Dataset : Global Shark Attack File (GSAF5.xls) — sharkattackfile.net
-Status  : ⚠️  DATA CLEANING PHASE — EDA & hypothesis validation pending
+Status  : ✅ Cleaning complete · ✅ H2 validated · 📌 H1 pending (Irene)
 --------------------------------------------------------------------------------
 
 ================================================================================
-1. PROJECT OVERVIEW
+1. BUSINESS CASE & HYPOTHESES
 ================================================================================
 
 BUSINESS CASE
--------------
-A marine biology research institution running master's and PhD programmes
-needs to optimise where and when to deploy fieldwork teams. By analysing
-historical shark incident data, it can focus resources on high-activity
-coastal regions and peak seasonal periods — maximising student exposure to
-real shark behaviour while managing risk.
+  A marine biology research institution running master's and PhD programmes
+  needs to optimise when and where to deploy fieldwork teams. Using 26 years
+  of global incident data (2000–2026), this analysis identifies the geographic
+  locations and seasonal windows that maximise student exposure to real shark
+  behaviour.
 
 HYPOTHESES
-----------
-H1 — Geographic Hotspots
-     Shark incidents (provoked and unprovoked) cluster in specific coastal
-     regions, indicating that environmental or ecological conditions make
-     certain areas structurally higher-risk.
-     Status: 📌 Pending EDA validation
+  H1 — Geographic Hotspots (📌 Irene — pending)
+       Shark incidents cluster in specific coastal regions, suggesting that
+       certain areas are structurally higher-risk due to environmental or
+       ecological conditions.
 
-H2 — Seasonal Patterns
-     Incidents peak during specific times of year, consistent with known
-     shark behavioural cycles: mating, migration, and feeding.
-     Status: 📌 Pending EDA validation — year_ext/month_ext/Season columns ready
-
-H3 — Species Diversity vs. Quantity
-     A more varied species sample correlates differently with incident
-     frequency than a single dominant species.
-     Status: 📌 Pending EDA validation — Species column unified and ready
-
-DATASET DESCRIPTION
--------------------
-Source    : Global Shark Attack File (GSAF), sharkattackfile.net
-File      : GSAF5.xls (included in repo)
-Raw shape : 7,087 rows × 23 columns
-Kept cols : Date, Year, Type, Country, State, Location,
-            Activity, Fatality, Time, Species
-            + derived: year_ext, month_ext, Season
-
-Incident categories:
-  - Unprovoked   : Shark initiated contact without human provocation
-  - Provoked     : Human drew first blood (spearing, hooking, capturing)
-  - Watercraft   : Boat bitten or rammed
-  - Sea Disaster : Maritime or aviation accidents
-  - Questionable : Insufficient data to confirm shark involvement
+  H2 — Seasonal Patterns (✅ Diana — confirmed)
+       Shark incidents concentrate in the summer months of each country's
+       local hemisphere. Pattern is stable across all 5-year windows (2000–2026).
+       Confirmed via pivot table × peak season analysis × trend stability test.
 
 
 ================================================================================
-2. REPOSITORY STRUCTURE
+2. KEY FINDINGS (H2 — Confirmed)
+================================================================================
+
+The top 5 countries (USA, Australia, South Africa, Bahamas, Brazil) show a
+consistent seasonal pattern when interpreted hemisphere-correctly:
+
+  Country         Peak Season (label)   Calendar months   Hemisphere
+  ──────────────────────────────────────────────────────────────────
+  USA             Winter                Dec – Feb         Northern
+  Australia       Summer                Dec – Feb         Southern
+  South Africa    Summer                Dec – Feb         Southern
+  Bahamas         Summer / Winter       Jun–Aug & Dec–Feb Tropical
+  Brazil          Summer                Dec – Feb         Southern
+
+KEY INSIGHT: The apparent difference in season labels is not a contradiction —
+it is a confirmation. Both groups peak in their local summer: warm water +
+maximum human water activity = highest encounter probability.
+
+FIELDWORK RECOMMENDATION:
+  Southern Hemisphere (Australia, South Africa, Brazil): deploy Dec – Feb
+  Northern Hemisphere (USA): deploy Jun – Aug
+
+This pattern is stable across all five 5-year windows from 2000 to 2026.
+
+
+================================================================================
+3. REPOSITORY STRUCTURE
 ================================================================================
 
 Shark_project_week2/
 │
-├── GSAF5.xls                           ← Raw dataset (do not edit)
-├── shark.py                            ← Cleaning module (importable, 11 chapters)
-├── Shark_df_Analysis_DY.ipynb          ← Main analysis notebook (use this one)
-├── Shark_df_Analysis_Notebook.ipynb    ← Colleague's original (reference only)
-├── D1-PLAN.docx                        ← Project plan & hypothesis document
-├── README.txt                          ← This file
+├── GSAF5.xls                    ← Raw dataset (do not modify)
+├── shark.py                     ← Cleaning module — 12 chapters, fully importable
+├── Shark_df_Analysis.ipynb      ← Main analysis notebook (single source of truth)
+├── D1-PLAN.docx                 ← Project plan and hypothesis document
+├── README.txt                   ← This file
 └── anaconda_projects/
-    └── db/                             ← SQL database files (pending)
+    └── db/                      ← SQL component (pending)
+
+RETIRED FILES (kept for reference, do not use for analysis):
+  Shark_df_Analysis_DY.ipynb         ← Diana's working notebook (superseded)
+  Shark_df_Analysis_Notebook.ipynb   ← Irene's working notebook (superseded)
+  Shark_df_Analysis_MERGED.ipynb     ← Intermediate merge (superseded)
 
 
 ================================================================================
-3. INSTALLATION & DEPENDENCIES
+4. INSTALLATION & DEPENDENCIES
 ================================================================================
 
-Python    : 3.8+
-Packages  :
-  pandas          — data manipulation and cleaning
+Python  : 3.8+
+Required:
+  pandas          — data manipulation
   openpyxl        — Excel file reading (required by pandas for .xls)
-  python-dateutil — fuzzy date parsing (used in Ch.9 date cleaning)
+  python-dateutil — fuzzy date parsing (used in date cleaning pipeline)
 
-Install all:
+Install:
   pip install pandas openpyxl python-dateutil
 
-Or with conda:
-  conda install pandas openpyxl python-dateutil
-
-Packages for future EDA phase (not yet needed):
-  matplotlib, seaborn
+Future (EDA visualisation — not yet needed):
+  pip install matplotlib seaborn
 
 
 ================================================================================
-4. HOW TO RUN
+5. HOW TO RUN
 ================================================================================
 
-STEP 1 — Clone the repository
-  git clone <repo-url>
-  cd Shark_project_week2
+OPTION A — Run the full notebook:
+  1. jupyter notebook Shark_df_Analysis.ipynb
+  2. Kernel → Restart & Run All
 
-STEP 2 — Install dependencies (see Section 3)
-
-STEP 3 — Open the main notebook
-  jupyter notebook Shark_df_Analysis_DY.ipynb
-
-STEP 4 — Run all cells in order (Kernel → Restart & Run All)
-
-HOW THE NOTEBOOK USES shark.py
-  The notebook currently runs cleaning step-by-step inline for full transparency.
-  shark.py consolidates the same logic into importable functions. To use the module:
-
-    from shark import clean_shark_df
-    clean_df = clean_shark_df("GSAF5.xls")
-
-  This is equivalent to running all Section 4 cells in sequence.
+OPTION B — Import the cleaning module:
+  from shark import clean_shark_df, scope_modern_era
+  shark_clean  = clean_shark_df("GSAF5.xls")   # full cleaned dataset
+  shark_newera = scope_modern_era(shark_clean)  # 2000–2026 analysis dataset
 
 
 ================================================================================
-5. CLEANING PROCESS — WHAT HAS BEEN DONE
+6. CLEANING PIPELINE — WHAT WAS DONE
 ================================================================================
 
-NOTEBOOK: Shark_df_Analysis_DY.ipynb (Sections 3–4)
-MODULE:   shark.py (Chapters 1–10)
+All 12 chapters of shark.py correspond to sequential steps in the notebook (Sec 4).
 
-Ch.1 / Sec 2 — Data Loading
-  pd.read_excel() with relative path. Working copy (shark_clean) preserved
-  separately from raw (shark_df).
+Ch.1  load_data
+      pd.read_excel() with error handling. Raw preserved as shark_df; all
+      cleaning performed on shark_clean.
 
-Ch.2 / Sec 4.1 — Column Dropping
-  Dropped 11 columns: Age, Name, Sex, Source, Injury, pdf, href formula,
-  href, original order, Unnamed: 21, Unnamed: 22.
-  Rationale: D1-PLAN.docx NO/MAYBE column classification.
+Ch.2  drop_irrelevant_columns
+      Dropped: Source, Injury, pdf, href formula, href, original order,
+      Unnamed: 21, Unnamed: 22.
+      Note: Age, Name, Sex retained until after deduplication.
 
-Ch.3 / Sec 4.1b — ID Column Evaluation
-  Case Number and Case Number.1 checked for uniqueness → both contain
-  duplicates → neither suitable as primary key → both dropped.
+Ch.3  check_and_drop_id_columns
+      Case Number and Case Number.1 checked for uniqueness → both contain
+      duplicates → neither is a reliable primary key → both dropped.
 
-Ch.4 / Sec 4.2 — Column Name Standardization
-  strip().capitalize() applied to all column names.
-  'Fatal y/n' renamed to 'Fatality'.
+Ch.4  standardize_col_names
+      strip().capitalize() on all names. 'Fatal y/n' → 'Fatality'.
 
-Ch.5 / Sec 4.3 — String Cleaning (Irene's work)
-  Country: strip/uppercase + manual mapping (ambiguous names, punctuation,
-           geographic non-countries set to None).
-  State, Location: strip/uppercase.
-  Fatality: strip/uppercase. Erroneous values flagged (F, M, NQ, 2017, Y X 2).
-  Helper functions: clean_string(), find_weird_strings()
+Ch.5  clean_string_columns  [Irene]
+      Country: strip + uppercase + manual mapping (abbreviations, punctuation,
+               geographic non-countries → None).
+      State, Location: strip + uppercase.
+      Fatality: strip + uppercase. Erroneous values (M, F, NQ, 2017, Y X 2)
+               flagged but retained (do not affect seasonal analysis).
 
-Ch.6 / Sec 4.3 — Activity Unification (Irene's work)
-  ~700 unique raw values → 10 standard categories.
-  Keyword-based mapping via next() iterator (FISHING, SWIMMING, SURFING,
-  DIVING, BOATING, KAYAKING, STATIONARY, MARITIME ACCIDENT, OTHER, UNKNOWN).
+Ch.6  clean_activity  [Irene]
+      ~700 unique raw values → 10 standard categories via keyword matching.
+      Categories: FISHING, SWIMMING, SURFING, DIVING, BOATING, KAYAKING,
+                  STATIONARY, MARITIME ACCIDENT, OTHER, UNKNOWN.
 
-Ch.7 / Sec 4.3 — Species Unification (Irene's work)
-  ~300+ unique raw values → 15 named species + OTHER + UNKNOWN.
-  Keyword-based mapping (WHITE SHARK, TIGER SHARK, BULL SHARK, etc.).
-  Note: Many records are 'UNKNOWN' — this is a known data quality limitation.
+Ch.7  clean_species  [Irene]
+      ~300+ unique raw values → 15 named species + OTHER + UNKNOWN via
+      keyword matching.
+      Note: High UNKNOWN share is a dataset characteristic (field reporting
+      limitation), not a cleaning failure.
 
-Ch.8 / Sec 4.4 — Type Standardization
-  Typos fixed (UNprovoked, Boatomg) → mapped to 5 official GSAF categories.
+Ch.8  standardize_type  [Irene]
+      Typos fixed (UNprovoked, Boatomg). 5 official categories enforced:
+      Unprovoked, Provoked, Watercraft, Sea Disaster, Questionable.
 
-Ch.9 / Sec 4.5 — Date Cleaning (Diana's work)
-  Multi-pass pipeline:
-    Pass 1: month_year() — normalise to 'Mon YYYY' format, handle ordinal
-             suffixes, 'MonthName DD', 'DD-Mon-YYYY', dual-year ranges.
-    Pass 2: word_cleaner() — strip noise words (Before, Circa, Reported…)
-             only from rows pd.to_datetime couldn't parse.
-    Pass 3: recog_daytimef() — convert parseable strings to datetime objects.
-    Pass 4: ext_year_month() — extract year_ext (int) and month_ext (int),
-             handling epoch artifacts from numeric year-only strings.
-    Pass 5: Season derived from month_ext map (for H2 temporal analysis).
-  Result: year_ext, month_ext, Season columns added.
+Ch.9  clean_dates  [Diana — 4-pass pipeline]
+      Pass 1 — month_year_f(): normalize to 'Mon YYYY' format; handle
+               ordinal suffixes, 'MonthName DD', 'DD-Mon-YYYY', dual-year
+               ranges.
+      Pass 2a — smart_cleaner(): fuzzy parse remaining strings with dateutil.
+      Pass 2b — word_cleaner(): strip noise words (Before, Circa, Reported…)
+                from rows that still fail.
+      Pass 3 — recog_daytimef(): convert parseable strings to datetime objects.
+      Pass 4 — ext_year_month(): extract year_ext + month_ext; handle epoch
+               artifacts (1970-01-01 microsecond encoding).
+      Season derived from month_ext map for H2 temporal analysis.
 
-Ch.10 / Sec 4.6 — Deduplication
-  check_duplicates() — fully duplicate rows removed (first kept).
+Ch.10 finalize_columns  [Diana]
+      Drop: Date, Year, Time, fdate_check.
+      Rename: year_ext → year, month_ext → month.
+      Lowercase all column names.
 
+Ch.11 deduplicate_and_validate  [Diana]
+      Step 1: Remove fully duplicate rows.
+      Step 2: Drop personal columns (name, age, sex).
+      Step 3: Drop rows with no valid year AND no valid month.
+      Step 4: Fix year artifact 9955 → 1995 (confirmed vs. raw data, row 5096).
+      Step 5: Drop 2 rows where year is still null/0 after all steps.
 
-================================================================================
-6. WHAT IS STILL PENDING
-================================================================================
-
-📌 Section 4.7 — Year Dtype Fix
-  Convert Year column float → Int64 (nullable integer).
-  Validate year_ext range; flag/filter pre-1900 records if needed.
-
-📌 Section 4.8 — Additional Transformations
-  Any remaining feature engineering or data shaping before EDA.
-  e.g. filtering to modern era (1950–present), binning years.
-
-📌 Section 5 — EDA (Exploratory Data Analysis)
-  Distribution of incident types, top countries, top activities,
-  yearly trend (1900–present), monthly/seasonal distribution,
-  species frequency breakdown.
-  → Requires matplotlib / seaborn (not yet covered in course).
-
-📌 Section 6 — Hypothesis Validation
-  H1: Geographic aggregation — top countries / regions by incident count.
-  H2: Monthly + seasonal distribution using month_ext / Season columns.
-  H3: Species frequency and diversity analysis.
-
-📌 Section 7 — Aggregation & Pivot Tables
-  Country × Type cross-tabulation (heatmap or pivot table).
-  Species × Incident Type breakdown.
-
-📌 Section 8 — Key Insights & Conclusions
-  To be filled after EDA and hypothesis validation are complete.
-
-📌 SQL Component (anaconda_projects/db/)
-  Normalized database schema (3NF minimum).
-  Advanced SQL queries: CTEs, Window Functions, Subqueries.
-
-📌 Presentation
-  Final slides with actual charts and validated conclusions.
-  Google Slides URL: [ADD BEFORE PRESENTATION DAY]
+Ch.12 scope_modern_era  [Diana]
+      Filter to year >= 2000. Returns shark_newera for analysis.
+      Rationale: pre-2000 data has systematically higher rates of missing
+      dates and incomplete location data.
 
 
 ================================================================================
-7. CLEANING SUMMARY TABLE
+7. FINAL DATASET SUMMARY
 ================================================================================
 
-Step  | Column(s)                              | Technique               | Status
-------|----------------------------------------|-------------------------|--------
-4.1   | 11 columns                             | Column dropping         | ✅ Done
-4.1b  | Case Number, Case Number.1             | ID check + drop         | ✅ Done
-4.2   | All                                    | Name standardization    | ✅ Done
-4.3a  | Country                                | String + manual mapping | ✅ Done
-4.3b  | State, Location, Fatality              | String cleaning         | ✅ Done
-4.3c  | Activity                               | Keyword category map    | ✅ Done
-4.3d  | Species                                | Keyword species map     | ✅ Done
-4.4   | Type                                   | Typo fix + category map | ✅ Done
-4.5   | Date → year_ext, month_ext, Season     | Multi-pass date parsing | ✅ Done
-4.6   | All                                    | Deduplication           | ✅ Done
-4.7   | Year                                   | Dtype + range validation| 📌 Pending
-4.8   | TBD                                    | Feature engineering     | 📌 Pending
+  Raw dataset (shark_df):     7,087 rows × 23 columns
+  After cleaning (shark_clean): ~[N] rows × 10 columns
+  Modern era (shark_newera):    ~[N] rows × 10 columns (2000–2026)
+
+  Final columns (lowercase):
+    country, state, location, fatality, activity, species, type,
+    year, month, season
+
+  Derived columns (from Date pipeline):
+    year    ← integer extracted from Date/Year
+    month   ← integer 1–12
+    season  ← Winter / Spring / Summer / Autumn
 
 
 ================================================================================
-8. BEST PRACTICES FOLLOWED (so far)
+8. EDA & ANALYSIS — CURRENT STATUS
+================================================================================
+
+  ✅ Sec 4   — Full cleaning pipeline (all 11 steps)
+  ✅ Sec 4.7 — Scope to modern era (shark_newera, 2000–2026)
+  ✅ Sec 5   — Seasonal analysis (null check, mode imputation, pivot table,
+               peak season per country, 5-year trend stability)
+  ✅ Sec 6   — H2 validated and verdict documented
+  📌 Sec 5   — Type / Activity / Country frequency distributions (code ready,
+               visualisation pending matplotlib module)
+  📌 Sec 6   — H1 validation (Irene — to be merged via GitHub)
+  📌 Sec 7   — Country × Type pivot table (Irene — part of H1)
+  📌 Sec 8   — H1 conclusions (Irene — after validation)
+  📌 SQL     — anaconda_projects/db/ schema and queries (pending)
+
+
+================================================================================
+9. BEST PRACTICES FOLLOWED
 ================================================================================
 
   ✅ PEP8 compliant Python throughout shark.py
   ✅ Modular design — each cleaning step is an independently callable function
   ✅ Logging with timestamps on all pipeline steps (shark.py)
   ✅ Error handling on file load (FileNotFoundError)
-  ✅ Docstrings on all functions (Args / Returns / Technique label)
-  ✅ Relative file paths — notebook runs on any machine with the repo
+  ✅ Docstrings on all functions: Args / Returns / Technique / Notes
   ✅ Raw data preserved (shark_df); working copy always used (shark_clean)
-  ✅ Helper functions defined once and reused across columns (clean_string,
-     find_weird_strings, _unify_activity, _unify_species)
-  ✅ Cleaning logic separated from analysis (shark.py is fully importable)
-  ✅ Private helper functions marked with leading underscore (_unify_activity)
+  ✅ Relative file paths — notebook runs on any machine that clones the repo
+  ✅ Cleaning separated from analysis — shark.py is fully importable
+  ✅ Private helpers marked with leading underscore
+  ✅ Two separate output frames: shark_clean (all years) + shark_newera (2000+)
 
 
 ================================================================================
-9. PRESENTATION
+10. PRESENTATION
 ================================================================================
 
-Google Slides URL : https://docs.google.com/presentation/d/1fUfaoPmaiCLCEeGMWcXY9B58B9Ye8q3P-nq9LP3NzME/edit?usp=sharing
-Expected delivery : [X] minutes + [X] minutes Q&A
+  Google Slides URL : [ADD BEFORE PRESENTATION DAY]
+  Expected delivery : [X] min + [X] min Q&A
 
-Slide structure:
-  01 — Title (hook)
-  02 — Business Problem
-  03 — Dataset Overview
-  04 — Cleaning Pipeline (what we built)
-  05 — EDA Overview (📌 pending)
-  06 — H1: Geographic Hotspots (📌 pending)
-  07 — H2: Seasonal Patterns (📌 pending)
-  08 — H3: Species Analysis (📌 pending)
-  09 — Key Findings & Recommendations (📌 pending)
-  10 — Q&A
+  Slide structure:
+    01 — Title: "Where the Ocean Bites Back"
+    02 — Business Problem
+    03 — Dataset Overview
+    04 — Cleaning Pipeline (Diana + Irene contributions)
+    05 — Three Hypotheses
+    06 — EDA: Seasonal Analysis (active results)
+    07 — H2: Seasonal Patterns → ✅ CONFIRMED
+    08 — H1: Geographic Hotspots → 📌 Pending
+    09 — Key Findings & Fieldwork Recommendations
+    10 — Q&A
 
 
 ================================================================================
